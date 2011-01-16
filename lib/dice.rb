@@ -9,16 +9,42 @@ module Dice
     attr_reader :total, :rolls
     def initialize
       @total = 0
-      @rolls = []
+      @rolls = RollCache.new 
     end
     def add(amount)
       @total += amount
     end
     def add_roll(roll, dice)
-      rolls << [roll, dice]
+      rolls.add(roll, dice)
     end
     def roll_details
-      rolls.map do |roll, dice|
+      rolls.to_s
+    end
+  end
+  class RollCache
+    attr_reader :rolls
+    def initialize
+      @rolls = []
+    end
+    def add(roll, dice)
+      @rolls << [roll, dice]
+    end
+    def size
+      @rolls.size
+    end
+    def concat(other_cache)
+      @rolls.concat(other_cache.rolls)
+    end
+    def [](index)
+      roll, dice = @rolls[index]
+      dice
+    end
+    def get(roll)
+      roll, dice = @rolls.assoc(roll)
+      dice
+    end
+    def to_s
+      @rolls.map do |roll, dice|
         "[#{roll.to_s}: #{dice.join(',')}]"
       end.join(' ')
     end
@@ -40,9 +66,9 @@ module Dice
     def negative?
       @parts.first.negative?
     end
-    def roll
+    def roll(roll_options={})
       result = Result.new
-      results = @parts.map(&:roll)
+      results = @parts.map {|r| r.roll(roll_options) }
       results.each do |r|
         result.rolls.concat(r.rolls)
       end
@@ -77,6 +103,27 @@ module Dice
       "#{'-' if negative?}(#{@parts.first.to_s})"
     end
   end
+  class AttributeError < StandardError; end
+  class Function < Brackets
+    attr_reader :name
+    def initialize(name, *args)
+      @name = name
+      super(*args)
+    end
+    def roll(roll_options={})
+      lookup = roll_options[:attributes]
+      raise AttributeError.new "No attribute values found" unless lookup
+      value = lookup[name]
+      if value && (!(Numeric === value) || value > 0)
+        super
+      else
+        Result.new
+      end
+    end  
+    def to_s
+      "#{'-' if negative?}#{name}(#{@parts.first.to_s})"
+    end
+  end
 
 
   class Addition < Set
@@ -96,20 +143,46 @@ module Dice
     end
   end
 
+  class Lookup
+    attr_reader :key
+    def initialize(key, options={})
+      @key, @options = key, options
+    end
+    def complete?
+      true
+    end
+    def roll(roll_options={})
+      lookup = roll_options[:attributes]
+      raise AttributeError.new "No attribute values found" unless lookup
+      value = lookup[@key]
+      raise AttributeError.new "Unknown attribute #{key}" if value.nil?
+      result = Result.new
+      result.add(value)
+      result
+    end
+    def negative?
+      @options[:negative]
+    end
+    def to_s
+      "#{'-' if negative?}#{key}"
+    end
+  end
+
   class Constant
     attr_reader :value
     def initialize(value)
       @value = value
     end
-    def negative?
-      value < 0
-    end
     def complete?
       true
     end
-    def roll(result=Result.new)
+    def roll(roll_options={})
+      result = Result.new
       result.add(value)
       result
+    end
+    def negative?
+      @value < 0
     end
     def to_s
       @value.to_s
@@ -153,19 +226,19 @@ module Dice
     def brutal
       @options[:brutal] || 0
     end
-    def roll(result=Result.new)
-      dice = []
-      total = 0
-      count.times do
-        value = 0
-        begin
-          value = rand(sides)+1
-          dice << value
-        end while value <= brutal
-        total += value
+    def roll(roll_options={})
+      result=Result.new
+      dice = roll_options[:roll_cache].get(self) if roll_options[:roll_cache]
+      unless dice
+        dice = []
+        count.times do
+          dice << rand(sides-brutal)+1+brutal
+        end
       end
       if options[:keep]
         total = dice.sort[-options[:keep]..-1].inject(0){|s,x| s+x}
+      else
+        total = dice.inject(0){|s,x| s+x}
       end
       result.add_roll(self, dice)
       result.add(negative? ? -total : total)

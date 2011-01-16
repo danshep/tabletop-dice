@@ -51,7 +51,23 @@ module Dice
         when ?(
           @stack << Brackets.new
           state_start_roll
+        when (?a..?z), (?A..?Z)
+          @attribute = c.chr
+          state_parse_attribute
         else unexpected(c)
+        end
+      end
+      def state_parse_attribute(c = next_char)
+        case c
+        when (?a..?z), (?A..?Z), ?_
+          @attribute += c.chr
+          state_parse_attribute
+        when ?(
+          @stack << Function.new(@attribute, @options)
+          state_start_roll
+        else
+          @calc = Lookup.new(@attribute, @options)
+          state_end_roll(c)
         end
       end
       def state_parse_count
@@ -101,6 +117,7 @@ module Dice
         unexpected(nil) unless @stack.size == 1 && @stack.last.complete?
       end
       def state_end_roll(c = next_char)
+        #p ['end roll', @calc]
         case c
         when ' '[0]
           state_end_roll
