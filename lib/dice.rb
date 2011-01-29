@@ -16,6 +16,27 @@ module Dice
     @number_generator = value
   end
 
+  def self.with_fixed_rolls(results, &block)
+    old_generator = self.number_generator
+    generator = Object.new
+    class << generator
+      attr_writer :numbers
+      def rand(max)
+        result = @numbers.shift
+        raise 'More rolls than expected' unless result
+        raise 'Fixed result is greater than dice sides' if result >= max
+        result - 1
+      end
+    end
+    generator.numbers = results
+    begin
+      self.number_generator = generator
+      block.call
+    ensure
+      self.number_generator = old_generator
+    end
+  end
+
   class Result
     attr_reader :total, :rolls
     def initialize
