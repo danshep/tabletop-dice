@@ -184,6 +184,24 @@ describe Dice::Result do
       proc { Dice.parse('testa(5)').roll(:attributes => {'testa' => nil}) }.should_not raise_error(Dice::AttributeError)
     end
   end
+  context "with a custom random_number generator" do
+    before :each do
+      generator = Object.new
+      class << generator
+        attr_writer :numbers
+        def rand(value)
+          @numbers.shift % value
+        end
+      end
+      generator.numbers = [0,1,2,3,4]
+      Dice.number_generator = generator
+    end
+    after :each do
+      Dice.number_generator = Kernel
+    end
+    describe_dice "5d6", 15, "[5d6: 1,2,3,4,5]"
+    describe_dice "(1d6+4d6)", 15, "[1d6: 1] [4d6: 2,3,4,5]"
+  end
 
 end
   

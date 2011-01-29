@@ -5,6 +5,17 @@ module Dice
     parser.output
   end
 
+  def self.random_number(max)
+    number_generator.rand(max)
+  end
+
+  def self.number_generator
+    @number_generator ||= Kernel
+  end
+  def self.number_generator=(value)
+    @number_generator = value
+  end
+
   class Result
     attr_reader :total, :rolls
     def initialize
@@ -232,7 +243,7 @@ module Dice
       unless dice
         dice = []
         count.times do
-          dice << rand(sides-brutal)+1+brutal
+          dice << Dice.random_number(sides-brutal)+1+brutal
         end
       end
       if options[:keep]
