@@ -207,6 +207,7 @@ describe Dice::Result do
       Dice.with_fixed_rolls([1,2,3,4,5], &block)
     end
     describe_dice "5d6", 15, "[5d6: 1,2,3,4,5]"
+    describe_dice "5d5", 15, "[5d5: 1,2,3,4,5]"
     describe_dice "(1d6+4d6)", 15, "[1d6: 1] [4d6: 2,3,4,5]"
     it "should raise on too many dice" do
       expect { Dice.parse('6d6').roll }.to raise_error(StandardError) 

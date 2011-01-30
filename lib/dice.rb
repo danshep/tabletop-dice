@@ -23,8 +23,8 @@ module Dice
       attr_writer :numbers
       def rand(max)
         result = @numbers.shift
-        raise 'More rolls than expected' unless result
-        raise 'Fixed result is greater than dice sides' if result >= max
+        raise "More rolls than expected (asked for #{max})" unless result
+        raise "Fixed result #{result} is greater than dice sides #{max}" if result > max
         result - 1
       end
     end
