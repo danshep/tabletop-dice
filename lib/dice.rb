@@ -40,14 +40,22 @@ module Dice
   class Result
     attr_reader :rolls, :typed_totals
     def initialize
-      @typed_totals = Hash.new(0) 
+      @typed_totals = [];
       @rolls = RollCache.new 
     end
     def total
       @typed_totals.inject(0) {|s,(k,v)| s + v }
     end
     def add(amount, type='Untyped')
-      @typed_totals[type] += amount
+      keyvalue = @typed_totals.assoc(type)
+      unless keyvalue
+        keyvalue = [type, 0]
+        @typed_totals << keyvalue
+      end
+      keyvalue[1] += amount
+    end
+    def typed_totals_hash
+      Hash[typed_totals]
     end
     def add_typed_totals(array_or_hash)
       array_or_hash.each do |k,v|
@@ -62,7 +70,7 @@ module Dice
       rolls.concat(other_result.rolls)
     end
     def total_string
-      if @typed_totals.keys == ['Untyped']
+      if @typed_totals.size == 1 && @typed_totals.first[0] == 'Untyped'
         total.to_s
       else
         strings = @typed_totals.map {|k,v| "#{v} #{k}" }
@@ -137,12 +145,16 @@ module Dice
     end
     def self.after?(other_object)
       return false unless other_object
-      precedence = [Multiplication,Division,Addition,Brackets] 
+      precedence = [Multiplication,Division,Addition,TypedSet,Brackets] 
       precedence.index(self) > precedence.index(other_object.class)
     end
   end
 
   class TypedSet < Set
+    def initialize(*args)
+      super
+      raise unless args.last[:damage_type]
+    end
     def <<(part)
       raise 'brackets should have only one part' unless @parts.empty?
       super
@@ -154,7 +166,9 @@ module Dice
       @options[:damage_type]
     end
     def process_results(result, results)
-      result.add(results.first.total, damage_type)
+      results.first.typed_totals.each do |type, value|
+        result.add(value, type == 'Untyped' ? damage_type : type)
+      end
     end
     def complete?
       @parts.size == 1
@@ -275,13 +289,13 @@ module Dice
       typed_totals = results.first.typed_totals
       results[1..-1].each do |r|
         untyped, typed = [r.typed_totals, typed_totals].partition do |x|
-          x.keys == ['Untyped']
+          x.map {|k,v| k} == ['Untyped']
         end
         typed = typed.first
         typed ||= untyped.shift
         untyped = untyped.first
         raise "Cannot multiply two typed amounts" unless untyped
-        multiplier = untyped['Untyped']
+        multiplier = untyped.first[1]
         typed_totals = typed.map do |k,v|
           [k, v*multiplier]
         end
@@ -298,8 +312,8 @@ module Dice
       typed_totals = results.first.typed_totals
       results[1..-1].each do |r|
         rtt = r.typed_totals
-        raise "Cannot divide by a typed amount" unless ['Untyped'] === rtt.keys
-        divisor = rtt['Untyped']
+        raise "Cannot divide by a typed amount" unless ['Untyped'] === rtt.map {|k,v| k}
+        divisor = rtt.first[1]
         typed_totals = typed_totals.map do |k,v|
           [k, v/divisor]
         end

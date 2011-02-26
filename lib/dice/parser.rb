@@ -1,6 +1,7 @@
 module Dice
   class ParserError < StandardError;end
   class Parser
+    SPACE = ' '[0]
     def initialize(string)
       #p ['parsing', string]
       @stack = []
@@ -36,7 +37,7 @@ module Dice
         when ?- then
           @options[:negative] = true
           state_start_roll
-        when ' '[0]   then state_start
+        when SPACE then state_start
         when nil
           validate_end
         else               state_start_roll(c)
@@ -47,7 +48,7 @@ module Dice
         when (?1..?9) then 
           @count = c - ?0
           state_parse_count
-        when ' '[0]   then state_start_roll
+        when SPACE then state_start_roll
         when ?(
           @stack << Brackets.new
           state_start_roll
@@ -121,8 +122,14 @@ module Dice
       def state_end_roll(c = next_char)
         #p ['end roll', @calc]
         case c
-        when ' '[0]
-          state_end_roll_with_space
+        when SPACE
+          state_start_type
+        else
+          state_next_part(c)
+        end
+      end
+      def state_next_part(c = next_char)
+        case c
         when nil
           add_element @calc, nil
           validate_end
@@ -141,13 +148,12 @@ module Dice
             @calc = @stack.pop
             state_end_roll
           else
-            p @stack
             unexpected(c)
           end
         else unexpected(c)
         end
       end
-      def state_end_roll_with_space(c = next_char)
+      def state_start_type(c = next_char)
         case c
         when (?a..?z), (?A..?Z), ?_
           @damage_type = c.chr
@@ -162,14 +168,39 @@ module Dice
           @damage_type += c.chr
           state_parse_type
         else
-          @calc = TypedSet.new(@calc, :damage_type => @damage_type)
-          state_end_roll(c)
+          state_continue_type(c)
         end
       end
-      def add_element(element, set_class)
+      def state_end_type(c = next_char)
+        case c
+        when SPACE
+          state_continue_type
+        else
+          add_element @calc, TypedSet, :damage_type => @damage_type
+          @calc = @stack.pop
+          state_next_part(c)
+        end
+      end
+      def state_continue_type(c = next_char)
+        case c
+        when SPACE
+          state_continue_type
+        when ?a
+          return unexpected(c) unless ?n === (c = next_char)
+          return unexpected(c) unless ?d === (c = next_char)
+          return unexpected(c) unless SPACE === (c = next_char)
+          c = next_char while c == SPACE
+          return unexpected(c) unless (?a..?z) === c || (?A..?Z) === c || ?_ === c
+          @damage_type += ' and '
+          state_parse_type(c)
+        else
+          state_end_type(c)
+        end
+      end
+      def add_element(element, set_class, *args)
         #p ['adding   ', set_class, element.to_s]
         if(@stack.empty?)
-          @stack << (set_class ? set_class.new(element) : element)
+          @stack << (set_class ? set_class.new(element, *args) : element)
         elsif set_class.nil?
           @stack.last << element
           while @stack.size > 1 && !(Brackets === @stack.last)
@@ -184,7 +215,7 @@ module Dice
           if(@stack.last && @stack.last.class == set_class)
             @stack.last << element
           else
-            new = set_class.new(element)
+            new = set_class.new(element, *args)
             @stack << new
           end
         end

@@ -21,7 +21,7 @@ describe Dice::Roll.new(5,:sides => 12), "A simple roll" do
   it "should return untyped damage" do
     srand(1000)
     roll = subject.roll
-    roll.typed_totals.should == {
+    roll.typed_totals_hash.should == {
       'Untyped' => 33
     }
   end
@@ -118,6 +118,8 @@ describe "The parser" do
     '2d3+',
     '2d3+3/4()',
     '()',
+    '5 Fire and',
+    '5 Fire Cold',
   ].each do |string|
     it "should not parse #{string}" do
       proc {Dice.parse(string)}.should raise_error(Dice::ParserError)
@@ -212,6 +214,10 @@ describe Dice::Result do
     describe_dice "1d6 Fire", "4 Fire", '[1d6: 4]'
     describe_dice "1d6 Fire + 1d6 Cold", "4 Fire and 1 Cold", '[1d6: 4] [1d6: 1]'
     describe_dice "(1d6) + 1d6 Cold", "5 Cold", '[1d6: 4] [1d6: 1]'
+    describe_dice "(1d6 + 1d6) Cold", "5 Cold", '[1d6: 4] [1d6: 1]'
+    describe_dice "5 + (6 Cold)", "5 Untyped and 6 Cold", ''
+    describe_dice "5 Fire + 6 Cold", "5 Fire and 6 Cold", ''
+    describe_dice "5 + 6 Fire and Cold", "11 Fire and Cold", ''
   end
   context "with an attribute" do
     describe_dice "testa+2+testb", 8, "", :attributes => {'testa' => 1, 'testb' => 5}
