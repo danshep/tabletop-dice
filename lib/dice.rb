@@ -38,16 +38,40 @@ module Dice
   end
 
   class Result
-    attr_reader :total, :rolls
+    attr_reader :rolls, :typed_totals
     def initialize
-      @total = 0
+      @typed_totals = Hash.new(0) 
       @rolls = RollCache.new 
     end
-    def add(amount)
-      @total += amount
+    def total
+      @typed_totals.inject(0) {|s,(k,v)| s + v }
     end
-    def add_roll(roll, dice)
-      rolls.add(roll, dice)
+    def add(amount, type='Untyped')
+      @typed_totals[type] += amount
+    end
+    def add_typed_totals(array_or_hash)
+      array_or_hash.each do |k,v|
+        if v
+          add(v, k)
+        else
+          add(k)
+        end
+      end
+    end
+    def concat(other_result)
+      rolls.concat(other_result.rolls)
+    end
+    def total_string
+      if @typed_totals.keys == ['Untyped']
+        total.to_s
+      else
+        strings = @typed_totals.map {|k,v| "#{v} #{k}" }
+        if strings.size > 1
+          strings[0..-2].join(', ') + " and #{strings.last}"
+        else
+          strings.first
+        end
+      end
     end
     def roll_details
       rolls.to_s
@@ -100,11 +124,12 @@ module Dice
     end
     def roll(roll_options={})
       result = Result.new
-      results = @parts.map {|r| r.roll(roll_options) }
-      results.each do |r|
-        result.rolls.concat(r.rolls)
+      results = @parts.map do |part| 
+        r = part.roll(roll_options)
+        result.concat(r)
+        r
       end
-      result.add(calculate_total(results))
+      process_results(result, results)
       result
     end
     def complete?
@@ -117,6 +142,28 @@ module Dice
     end
   end
 
+  class TypedSet < Set
+    def <<(part)
+      raise 'brackets should have only one part' unless @parts.empty?
+      super
+    end
+    def negative?
+      @parts.first.negative?
+    end
+    def damage_type
+      @options[:damage_type]
+    end
+    def process_results(result, results)
+      result.add(results.first.total, damage_type)
+    end
+    def complete?
+      @parts.size == 1
+    end
+    def to_s
+      "#{@parts.first.to_s} #{damage_type}"
+    end
+  end
+
   class Brackets < Set
     def <<(part)
       raise 'brackets should have only one part' unless @parts.empty?
@@ -125,8 +172,8 @@ module Dice
     def negative?
       @options[:negative]
     end
-    def calculate_total(results)
-      results.first.total
+    def process_results(result, results)
+      result.add_typed_totals(results.first.typed_totals)
     end
     def complete?
       @parts.size == 1
@@ -159,8 +206,10 @@ module Dice
 
 
   class Addition < Set
-    def calculate_total(results)
-      results.inject(0) {|s,r| s+r.total }
+    def process_results(result, results)
+      results.each do |r|
+        result.add_typed_totals(r.typed_totals)
+      end
     end
     def to_s
       i = -1
@@ -222,8 +271,22 @@ module Dice
   end
 
   class Multiplication < Set
-    def calculate_total(results)
-      results.inject(1) {|s,r| s*r.total}
+    def process_results(result, results)
+      typed_totals = results.first.typed_totals
+      results[1..-1].each do |r|
+        untyped, typed = [r.typed_totals, typed_totals].partition do |x|
+          x.keys == ['Untyped']
+        end
+        typed = typed.first
+        typed ||= untyped.shift
+        untyped = untyped.first
+        raise "Cannot multiply two typed amounts" unless untyped
+        multiplier = untyped['Untyped']
+        typed_totals = typed.map do |k,v|
+          [k, v*multiplier]
+        end
+      end
+      result.add_typed_totals(typed_totals)
     end
     def to_s
       @parts.join('*')
@@ -231,8 +294,17 @@ module Dice
   end
 
   class Division < Set
-    def calculate_total(results)
-      results.inject(nil) {|s,r| s ? s/r.total : r.total }
+    def process_results(result,results)
+      typed_totals = results.first.typed_totals
+      results[1..-1].each do |r|
+        rtt = r.typed_totals
+        raise "Cannot divide by a typed amount" unless ['Untyped'] === rtt.keys
+        divisor = rtt['Untyped']
+        typed_totals = typed_totals.map do |k,v|
+          [k, v/divisor]
+        end
+      end
+      result.add_typed_totals(typed_totals)
     end
     def to_s
       @parts.join('/')
@@ -272,7 +344,7 @@ module Dice
       else
         total = dice.inject(0){|s,x| s+x}
       end
-      result.add_roll(self, dice)
+      result.rolls.add(self, dice)
       result.add(negative? ? -total : total)
       result
     end

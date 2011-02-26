@@ -114,13 +114,15 @@ module Dice
         end
       end
       def validate_end
-        unexpected(nil) unless @stack.size == 1 && @stack.last.complete?
+        unless @stack.size == 1 && @stack.last.complete?
+          unexpected(nil) 
+        end
       end
       def state_end_roll(c = next_char)
         #p ['end roll', @calc]
         case c
         when ' '[0]
-          state_end_roll
+          state_end_roll_with_space
         when nil
           add_element @calc, nil
           validate_end
@@ -143,6 +145,25 @@ module Dice
             unexpected(c)
           end
         else unexpected(c)
+        end
+      end
+      def state_end_roll_with_space(c = next_char)
+        case c
+        when (?a..?z), (?A..?Z), ?_
+          @damage_type = c.chr
+          state_parse_type
+        else
+          state_end_roll(c)
+        end
+      end
+      def state_parse_type(c = next_char)
+        case c
+        when (?a..?z), (?A..?Z), ?_
+          @damage_type += c.chr
+          state_parse_type
+        else
+          @calc = TypedSet.new(@calc, :damage_type => @damage_type)
+          state_end_roll(c)
         end
       end
       def add_element(element, set_class)
